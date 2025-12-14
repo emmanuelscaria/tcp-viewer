@@ -15,6 +15,7 @@ function App() {
   useEffect(() => {
     // Cleanup on unmount
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       if (wsRef.current) {
         wsRef.current.close();
       }
