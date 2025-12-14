@@ -6,17 +6,20 @@ echo "TCP Viewer - Quick Start"
 echo "========================================="
 echo ""
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then 
-    echo "⚠️  Warning: Backend packet capture requires root privileges"
-    echo "   You'll need to run the backend with sudo separately"
+# Don't run as root
+if [ "$EUID" -eq 0 ]; then 
+    echo "❌ Don't run this script with sudo"
+    echo "   Run as regular user: ./setup.sh"
+    echo "   (You'll use sudo only when starting the server)"
+    exit 1
 fi
 
 # Check for python3-venv
-if ! dpkg -l | grep -q python3-venv; then
-    echo "⚠️  Warning: python3-venv not installed"
-    echo "   Install with: sudo apt install python3-venv"
+if ! dpkg -l 2>/dev/null | grep -q python3-venv; then
+    echo "⚠️  python3-venv not installed"
+    echo "   Install with: sudo apt install python3-venv python3-full"
     echo ""
+    exit 1
 fi
 
 echo "Setting up backend..."
@@ -34,9 +37,25 @@ if [ ! -d "venv" ]; then
     fi
 fi
 
-# Activate virtual environment and install dependencies
+# Check if pip is available in venv
+if [ ! -f "venv/bin/pip" ]; then
+    echo "❌ Virtual environment doesn't have pip"
+    echo "   This usually means python3-venv is not fully installed"
+    echo "   Install with: sudo apt install python3-venv python3-full"
+    cd ..
+    exit 1
+fi
+
+# Install dependencies
 echo "Installing dependencies in virtual environment..."
+venv/bin/pip install -q --upgrade pip
 venv/bin/pip install -q -r requirements.txt
+
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to install dependencies"
+    cd ..
+    exit 1
+fi
 
 # Generate gRPC stubs if not present
 if [ ! -f "tcp_monitor_pb2.py" ]; then
@@ -46,7 +65,14 @@ if [ ! -f "tcp_monitor_pb2.py" ]; then
       --python_out=. \
       --grpc_python_out=. \
       ../proto/tcp_monitor.proto
-    echo "✅ Generated gRPC Python stubs successfully!"
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Generated gRPC Python stubs successfully!"
+    else
+        echo "❌ Failed to generate gRPC stubs"
+        cd ..
+        exit 1
+    fi
 fi
 
 cd ..
