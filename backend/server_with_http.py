@@ -258,6 +258,95 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
         )
 
 
+def start_packet_capture(interface=None):
+    """Start background packet capture that feeds the HTTP endpoint"""
+    if not SCAPY_AVAILABLE:
+        print("❌ Scapy not available - packet capture disabled")
+        return
+    
+    print(f"🔍 Starting packet capture on interface: {interface or 'all'}")
+    
+    def packet_handler(pkt):
+        if pkt.haslayer(TCP) and pkt.haslayer(IP):
+            try:
+                ip_layer = pkt[IP]
+                tcp_layer = pkt[TCP]
+                
+                # Store packet in HTTP bridge
+                packet_dict = {
+                    'timestamp': datetime.now().isoformat(),
+                    'src_ip': ip_layer.src,
+                    'src_port': tcp_layer.sport,
+                    'dst_ip': ip_layer.dst,
+                    'dst_port': tcp_layer.dport,
+                    'flag_syn': bool(tcp_layer.flags.S),
+                    'flag_ack': bool(tcp_layer.flags.A),
+                    'flag_fin': bool(tcp_layer.flags.F),
+                    'flag_rst': bool(tcp_layer.flags.R),
+                    'flag_psh': bool(tcp_layer.flags.P),
+                    'flag_urg': bool(tcp_layer.flags.U),
+                    'payload_length': len(tcp_layer.payload),
+                }
+                data_store.add_packet(packet_dict)
+                
+                # Update connections
+                conn_id = hashlib.md5(f"{ip_layer.src}:{tcp_layer.sport}-{ip_layer.dst}:{tcp_layer.dport}".encode()).hexdigest()[:16]
+                
+                if conn_id not in _active_connections:
+                    _active_connections[conn_id] = {
+                        'connection_id': conn_id,
+                        'src_ip': ip_layer.src,
+                        'src_port': tcp_layer.sport,
+                        'dst_ip': ip_layer.dst,
+                        'dst_port': tcp_layer.dport,
+                        'state': 'UNKNOWN',
+                        'bytes_sent': 0,
+                        'bytes_received': 0,
+                    }
+                
+                conn = _active_connections[conn_id]
+                
+                # Update state based on flags
+                if tcp_layer.flags.S and not tcp_layer.flags.A:
+                    conn['state'] = 'SYN_SENT'
+                elif tcp_layer.flags.S and tcp_layer.flags.A:
+                    conn['state'] = 'SYN_RECEIVED'
+                elif tcp_layer.flags.A:
+                    conn['state'] = 'ESTABLISHED'
+                elif tcp_layer.flags.F:
+                    conn['state'] = 'FIN_WAIT'
+                elif tcp_layer.flags.R:
+                    conn['state'] = 'CLOSED'
+                
+                conn['bytes_sent'] += len(tcp_layer.payload)
+                conn['timestamp'] = datetime.now().isoformat()
+                
+                data_store.update_connection(conn_id, conn)
+                
+            except Exception as e:
+                print(f"Error processing packet: {e}")
+    
+    def sniff_packets():
+        try:
+            sniff(
+                iface=interface,
+                prn=packet_handler,
+                filter="tcp",
+                store=False,
+            )
+        except PermissionError:
+            print("❌ Permission denied. Run with sudo/root privileges")
+        except Exception as e:
+            print(f"Sniffing error: {e}")
+    
+    # Start sniffing in background thread
+    sniffer_thread = Thread(target=sniff_packets, daemon=True)
+    sniffer_thread.start()
+
+
+_active_connections = {}
+
+
 def serve(grpc_port=50051, http_port=50052):
     """Start both gRPC and HTTP servers"""
     
@@ -278,6 +367,11 @@ def serve(grpc_port=50051, http_port=50052):
     
     print(f"✅ HTTP Bridge started on port {http_port}")
     print(f"   Access: http://localhost:{http_port}/api/traffic")
+    print()
+    
+    # Start background packet capture
+    start_packet_capture(interface='lo')
+    
     print()
     print("Note: Packet capture requires root/sudo privileges")
     print("Press Ctrl+C to stop")
