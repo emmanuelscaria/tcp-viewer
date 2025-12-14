@@ -328,11 +328,12 @@ def start_packet_capture(interface=None):
     
     def sniff_packets():
         try:
+            # Don't use BPF filter if libpcap not available
             sniff(
                 iface=interface,
                 prn=packet_handler,
-                filter="tcp",
                 store=False,
+                filter=None,  # No filter - process all packets
             )
         except PermissionError:
             print("❌ Permission denied. Run with sudo/root privileges")
