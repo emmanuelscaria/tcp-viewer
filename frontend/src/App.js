@@ -33,14 +33,10 @@ function App() {
     
     // Poll the backend HTTP endpoint
     const pollInterval = setInterval(() => {
-      if (!isMonitoring) {
-        clearInterval(pollInterval);
-        return;
-      }
-      
       fetch('http://localhost:50052/api/traffic')
         .then(res => res.json())
         .then(data => {
+          console.log('Received data:', data); // Debug log
           setIsConnected(true);
           
           // Update packets
