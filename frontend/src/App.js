@@ -6,7 +6,7 @@ function App() {
   const [packets, setPackets] = useState([]);
   const [selectedConnection, setSelectedConnection] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [interface_, setInterface] = useState('lo');
+  const [interface_, setInterface] = useState('eth0');
   const [isMonitoring, setIsMonitoring] = useState(false);
   
   const maxPackets = 100; // Keep last 100 packets for display
