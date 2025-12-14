@@ -18,6 +18,8 @@ import grpc
 
 import tcp_monitor_pb2
 import tcp_monitor_pb2_grpc
+from tcp_introspector import get_tcp_info_via_ss
+from tcp_packet_analyzer import TcpPacketAnalyzer
 
 try:
     from scapy.all import sniff, TCP, IP
@@ -25,6 +27,9 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
     print("Warning: Scapy not available. Install with: pip install scapy")
+
+# Global packet analyzer instance
+packet_analyzer = TcpPacketAnalyzer()
 
 
 # Shared data store
@@ -301,7 +306,7 @@ def start_packet_capture(interface=None):
                 ip_layer = pkt[IP]
                 tcp_layer = pkt[TCP]
                 
-                # Store packet in HTTP bridge
+                # Store packet in HTTP bridge with TCP header details
                 packet_dict = {
                     'timestamp': datetime.now().isoformat(),
                     'src_ip': ip_layer.src,
@@ -315,6 +320,9 @@ def start_packet_capture(interface=None):
                     'flag_psh': bool(tcp_layer.flags.P),
                     'flag_urg': bool(tcp_layer.flags.U),
                     'payload_length': len(tcp_layer.payload),
+                    'seq_number': tcp_layer.seq,
+                    'ack_number': tcp_layer.ack if tcp_layer.flags.A else 0,
+                    'window': tcp_layer.window,
                 }
                 data_store.add_packet(packet_dict)
                 
@@ -336,25 +344,45 @@ def start_packet_capture(interface=None):
                         'state': 'UNKNOWN',
                         'bytes_sent': 0,
                         'bytes_received': 0,
+                        'recent_packets': [],
                     }
+                    print(f"🆕 New connection: {endpoints[0][0]}:{endpoints[0][1]} <-> {endpoints[1][0]}:{endpoints[1][1]}")
                 
                 conn = _active_connections[conn_id]
                 
-                # Track bytes in both directions
-                if ip_layer.src == conn['src_ip'] and tcp_layer.sport == conn['src_port']:
-                    # Packet going in forward direction
-                    conn['bytes_sent'] += len(tcp_layer.payload)
-                else:
-                    # Packet going in reverse direction
-                    conn['bytes_received'] += len(tcp_layer.payload)
+                # Determine if packet is outgoing (from first endpoint)
+                is_outgoing = (ip_layer.src == conn['src_ip'] and tcp_layer.sport == conn['src_port'])
+                
+                # Build flags string
+                flags = ''
+                if tcp_layer.flags.S: flags += 'S'
+                if tcp_layer.flags.A: flags += 'A'
+                if tcp_layer.flags.F: flags += 'F'
+                if tcp_layer.flags.R: flags += 'R'
+                if tcp_layer.flags.P: flags += 'P'
+                if tcp_layer.flags.U: flags += 'U'
+                
+                # Process packet through analyzer to calculate RTT and other metrics
+                pkt_data = {
+                    'timestamp': time.time(),
+                    'seq': tcp_layer.seq,
+                    'ack': tcp_layer.ack,
+                    'flags': flags,
+                    'payload_len': len(tcp_layer.payload),
+                    'window': tcp_layer.window,
+                }
+                
+                # Update metrics using packet-level analysis
+                metrics = packet_analyzer.process_packet(conn_id, pkt_data, is_outgoing)
                 
                 # Update state based on flags
                 if tcp_layer.flags.S and not tcp_layer.flags.A:
                     conn['state'] = 'SYN_SENT'
                 elif tcp_layer.flags.S and tcp_layer.flags.A:
                     conn['state'] = 'SYN_RECEIVED'
-                elif tcp_layer.flags.A:
-                    conn['state'] = 'ESTABLISHED'
+                elif tcp_layer.flags.A and not (tcp_layer.flags.S or tcp_layer.flags.F):
+                    if conn['state'] == 'UNKNOWN' or conn['state'] == 'SYN_RECEIVED':
+                        conn['state'] = 'ESTABLISHED'
                 elif tcp_layer.flags.F:
                     conn['state'] = 'FIN_WAIT'
                 elif tcp_layer.flags.R:
@@ -362,42 +390,59 @@ def start_packet_capture(interface=None):
                 
                 conn['timestamp'] = datetime.now().isoformat()
                 
-                # Get real TCP metrics from kernel
-                kernel_stats = get_tcp_info_via_ss(
-                    conn['src_ip'], conn['src_port'],
-                    conn['dst_ip'], conn['dst_port']
-                )
+                # Track recent packets with seq/ack numbers (keep last 5)
+                recent_pkt = {
+                    'timestamp': datetime.now().isoformat(),
+                    'seq': tcp_layer.seq,
+                    'ack': tcp_layer.ack if tcp_layer.flags.A else 0,
+                    'flags': flags,
+                    'direction': 'outgoing' if is_outgoing else 'incoming',
+                }
+                conn.setdefault('recent_packets', []).insert(0, recent_pkt)
+                conn['recent_packets'] = conn['recent_packets'][:5]  # Keep only last 5
                 
-                # Update HTTP bridge with full metrics (real or defaults)
-                data_store.update_connection(conn_id, {
+                # Get calculated metrics from packet analyzer
+                calculated_metrics = packet_analyzer.get_metrics(conn_id)
+                
+                # Update HTTP bridge with calculated metrics and recent packets
+                conn_dict = {
                     'connection_id': conn_id,
                     'src_ip': conn['src_ip'],
                     'src_port': conn['src_port'],
                     'dst_ip': conn['dst_ip'],
                     'dst_port': conn['dst_port'],
                     'state': conn['state'],
-                    'bytes_sent': conn['bytes_sent'],
-                    'bytes_received': conn['bytes_received'],
-                    'snd_cwnd': kernel_stats.get('snd_cwnd', 10) if kernel_stats else 10,
-                    'snd_ssthresh': kernel_stats.get('snd_ssthresh', 64) if kernel_stats else 64,
-                    'snd_wnd': kernel_stats.get('snd_wnd', 65535) if kernel_stats else 65535,
-                    'rcv_wnd': 65535,  # Not available from ss
-                    'srtt': kernel_stats.get('srtt', 1000) if kernel_stats else 1000,
-                    'rto': kernel_stats.get('rto', 200) if kernel_stats else 200,
+                    'bytes_sent': calculated_metrics['bytes_sent'],
+                    'bytes_received': calculated_metrics['bytes_received'],
+                    'snd_cwnd': calculated_metrics['snd_cwnd'],
+                    'snd_ssthresh': calculated_metrics['snd_ssthresh'],
+                    'snd_wnd': calculated_metrics['snd_wnd'],
+                    'rcv_wnd': calculated_metrics['rcv_wnd'],
+                    'srtt': calculated_metrics['srtt'],
+                    'rto': calculated_metrics['rto'],
+                    'retransmissions': calculated_metrics['retransmissions'],
+                    'inflight': calculated_metrics['inflight'],
                     'timestamp': conn['timestamp'],
-                })
+                    'recent_packets': conn['recent_packets'],
+                }
+                data_store.update_connection(conn_id, conn_dict)
+                
+                if calculated_metrics['srtt'] > 0:
+                    print(f"📊 {conn_id[:8]} state={conn['state']} RTT={calculated_metrics['srtt']:.1f}ms cwnd={calculated_metrics['snd_cwnd']} inflight={calculated_metrics['inflight']}")
                 
             except Exception as e:
+                import traceback
                 print(f"Error processing packet: {e}")
+                traceback.print_exc()
     
     def sniff_packets():
         try:
-            # Don't use BPF filter if libpcap not available
+            print(f"📡 Sniffing on interface: {interface}")
+            # Don't use BPF filter if libpcap not available, just filter in packet_handler
             sniff(
                 iface=interface,
                 prn=packet_handler,
                 store=False,
-                filter=None,  # No filter - process all packets
             )
         except PermissionError:
             print("❌ Permission denied. Run with sudo/root privileges")

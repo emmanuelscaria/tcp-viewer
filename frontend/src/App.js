@@ -205,6 +205,16 @@ function App() {
                   {pkt.src_ip}:{pkt.src_port} → {pkt.dst_ip}:{pkt.dst_port}
                 </span>
                 <span className="packet-flags">[{formatFlags(pkt)}]</span>
+                {pkt.seq_number && (
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>
+                    SEQ:{pkt.seq_number.toLocaleString()}
+                  </span>
+                )}
+                {pkt.ack_number && pkt.ack_number > 0 && (
+                  <span style={{ fontSize: '0.75rem', color: '#888' }}>
+                    ACK:{pkt.ack_number.toLocaleString()}
+                  </span>
+                )}
                 <span>{pkt.payload_length}B</span>
               </div>
             ))}
@@ -449,6 +459,55 @@ function App() {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="detail-section">
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#888' }}>Recent Packets</h3>
+                {connections[selectedConnection].recent_packets && connections[selectedConnection].recent_packets.length > 0 ? (
+                  <div className="recent-packets">
+                    <table style={{ width: '100%', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid #333' }}>
+                          <th style={{ textAlign: 'left', padding: '0.5rem' }}>Time</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem' }}>Direction</th>
+                          <th style={{ textAlign: 'right', padding: '0.5rem' }}>SEQ</th>
+                          <th style={{ textAlign: 'right', padding: '0.5rem' }}>ACK</th>
+                          <th style={{ textAlign: 'left', padding: '0.5rem' }}>Flags</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {connections[selectedConnection].recent_packets.map((pkt, idx) => (
+                          <tr key={idx} style={{ borderBottom: '1px solid #222' }}>
+                            <td style={{ padding: '0.5rem', fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                              {formatTime(pkt.timestamp)}
+                            </td>
+                            <td style={{ padding: '0.5rem' }}>
+                              <span style={{ 
+                                color: pkt.direction === 'outgoing' ? '#00aaff' : '#00ff88',
+                                fontWeight: 'bold' 
+                              }}>
+                                {pkt.direction === 'outgoing' ? '→' : '←'}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.5rem', textAlign: 'right', fontFamily: 'monospace' }}>
+                              {pkt.seq.toLocaleString()}
+                            </td>
+                            <td style={{ padding: '0.5rem', textAlign: 'right', fontFamily: 'monospace' }}>
+                              {pkt.ack > 0 ? pkt.ack.toLocaleString() : '-'}
+                            </td>
+                            <td style={{ padding: '0.5rem', fontFamily: 'monospace', color: '#ffaa00' }}>
+                              {pkt.flags || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ padding: '1rem', color: '#888', textAlign: 'center' }}>
+                    No recent packet data available
+                  </div>
+                )}
               </div>
             </div>
           ) : (
