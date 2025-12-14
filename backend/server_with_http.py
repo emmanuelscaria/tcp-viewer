@@ -181,7 +181,13 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
                         stats = self._get_connection_stats(conn_id, conn_data)
                         yield tcp_monitor_pb2.TcpEvent(stats=stats)
                         
-                        # Also update HTTP bridge
+                        # Get real TCP metrics from kernel
+                        kernel_stats = get_tcp_info_via_ss(
+                            conn_data['src_ip'], conn_data['src_port'],
+                            conn_data['dst_ip'], conn_data['dst_port']
+                        )
+                        
+                        # Also update HTTP bridge with real metrics
                         conn_dict = {
                             'connection_id': conn_id,
                             'src_ip': conn_data['src_ip'],
@@ -191,12 +197,12 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
                             'state': conn_data['state'],
                             'bytes_sent': conn_data['bytes_sent'],
                             'bytes_received': conn_data['bytes_received'],
-                            'snd_cwnd': 10,  # TODO: Read from kernel
-                            'snd_ssthresh': 64,
-                            'snd_wnd': 65535,
-                            'rcv_wnd': 65535,
-                            'srtt': 1000,  # microseconds
-                            'rto': 200,  # milliseconds
+                            'snd_cwnd': kernel_stats.get('snd_cwnd', 10) if kernel_stats else 10,
+                            'snd_ssthresh': kernel_stats.get('snd_ssthresh', 64) if kernel_stats else 64,
+                            'snd_wnd': kernel_stats.get('snd_wnd', 65535) if kernel_stats else 65535,
+                            'rcv_wnd': 65535,  # Not available from ss
+                            'srtt': kernel_stats.get('srtt', 1000) if kernel_stats else 1000,
+                            'rto': kernel_stats.get('rto', 200) if kernel_stats else 200,
                             'timestamp': datetime.now().isoformat(),
                         }
                         data_store.update_connection(conn_id, conn_dict)
@@ -356,7 +362,13 @@ def start_packet_capture(interface=None):
                 
                 conn['timestamp'] = datetime.now().isoformat()
                 
-                # Update HTTP bridge with full metrics
+                # Get real TCP metrics from kernel
+                kernel_stats = get_tcp_info_via_ss(
+                    conn['src_ip'], conn['src_port'],
+                    conn['dst_ip'], conn['dst_port']
+                )
+                
+                # Update HTTP bridge with full metrics (real or defaults)
                 data_store.update_connection(conn_id, {
                     'connection_id': conn_id,
                     'src_ip': conn['src_ip'],
@@ -366,12 +378,12 @@ def start_packet_capture(interface=None):
                     'state': conn['state'],
                     'bytes_sent': conn['bytes_sent'],
                     'bytes_received': conn['bytes_received'],
-                    'snd_cwnd': 10,  # TODO: Read from kernel
-                    'snd_ssthresh': 64,
-                    'snd_wnd': 65535,
-                    'rcv_wnd': 65535,
-                    'srtt': 1000,  # microseconds
-                    'rto': 200,  # milliseconds
+                    'snd_cwnd': kernel_stats.get('snd_cwnd', 10) if kernel_stats else 10,
+                    'snd_ssthresh': kernel_stats.get('snd_ssthresh', 64) if kernel_stats else 64,
+                    'snd_wnd': kernel_stats.get('snd_wnd', 65535) if kernel_stats else 65535,
+                    'rcv_wnd': 65535,  # Not available from ss
+                    'srtt': kernel_stats.get('srtt', 1000) if kernel_stats else 1000,
+                    'rto': kernel_stats.get('rto', 200) if kernel_stats else 200,
                     'timestamp': conn['timestamp'],
                 })
                 
