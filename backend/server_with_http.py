@@ -206,16 +206,27 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
                 break
     
     def _get_connection_id(self, src_ip, src_port, dst_ip, dst_port):
-        conn_str = f"{src_ip}:{src_port}-{dst_ip}:{dst_port}"
+        """Generate bidirectional connection ID from 4-tuple"""
+        # Sort endpoints so A->B and B->A get the same ID
+        endpoints = sorted([
+            (src_ip, src_port),
+            (dst_ip, dst_port)
+        ])
+        conn_str = f"{endpoints[0][0]}:{endpoints[0][1]}-{endpoints[1][0]}:{endpoints[1][1]}"
         return hashlib.md5(conn_str.encode()).hexdigest()[:16]
     
     def _update_connection(self, conn_id, ip_layer, tcp_layer):
         if conn_id not in self.active_connections:
+            # Create new connection with sorted endpoints
+            endpoints = sorted([
+                (ip_layer.src, tcp_layer.sport),
+                (ip_layer.dst, tcp_layer.dport)
+            ])
             self.active_connections[conn_id] = {
-                'src_ip': ip_layer.src,
-                'src_port': tcp_layer.sport,
-                'dst_ip': ip_layer.dst,
-                'dst_port': tcp_layer.dport,
+                'src_ip': endpoints[0][0],
+                'src_port': endpoints[0][1],
+                'dst_ip': endpoints[1][0],
+                'dst_port': endpoints[1][1],
                 'state': 'UNKNOWN',
                 'bytes_sent': 0,
                 'bytes_received': 0,
@@ -224,6 +235,15 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
         
         conn = self.active_connections[conn_id]
         
+        # Track bytes in both directions
+        if ip_layer.src == conn['src_ip']:
+            # Packet going in forward direction
+            conn['bytes_sent'] += len(tcp_layer.payload)
+        else:
+            # Packet going in reverse direction  
+            conn['bytes_received'] += len(tcp_layer.payload)
+        
+        # Update state based on flags
         if tcp_layer.flags.S and not tcp_layer.flags.A:
             conn['state'] = 'SYN_SENT'
         elif tcp_layer.flags.S and tcp_layer.flags.A:
@@ -235,7 +255,6 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
         elif tcp_layer.flags.R:
             conn['state'] = 'CLOSED'
         
-        conn['bytes_sent'] += len(tcp_layer.payload)
         conn['last_seen'] = time.time()
     
     def _get_connection_stats(self, conn_id, conn_data):
@@ -289,22 +308,35 @@ def start_packet_capture(interface=None):
                 }
                 data_store.add_packet(packet_dict)
                 
-                # Update connections
-                conn_id = hashlib.md5(f"{ip_layer.src}:{tcp_layer.sport}-{ip_layer.dst}:{tcp_layer.dport}".encode()).hexdigest()[:16]
+                # Update connections - use bidirectional ID
+                endpoints = sorted([
+                    (ip_layer.src, tcp_layer.sport),
+                    (ip_layer.dst, tcp_layer.dport)
+                ])
+                conn_str = f"{endpoints[0][0]}:{endpoints[0][1]}-{endpoints[1][0]}:{endpoints[1][1]}"
+                conn_id = hashlib.md5(conn_str.encode()).hexdigest()[:16]
                 
                 if conn_id not in _active_connections:
                     _active_connections[conn_id] = {
                         'connection_id': conn_id,
-                        'src_ip': ip_layer.src,
-                        'src_port': tcp_layer.sport,
-                        'dst_ip': ip_layer.dst,
-                        'dst_port': tcp_layer.dport,
+                        'src_ip': endpoints[0][0],
+                        'src_port': endpoints[0][1],
+                        'dst_ip': endpoints[1][0],
+                        'dst_port': endpoints[1][1],
                         'state': 'UNKNOWN',
                         'bytes_sent': 0,
                         'bytes_received': 0,
                     }
                 
                 conn = _active_connections[conn_id]
+                
+                # Track bytes in both directions
+                if ip_layer.src == conn['src_ip']:
+                    # Packet going in forward direction
+                    conn['bytes_sent'] += len(tcp_layer.payload)
+                else:
+                    # Packet going in reverse direction
+                    conn['bytes_received'] += len(tcp_layer.payload)
                 
                 # Update state based on flags
                 if tcp_layer.flags.S and not tcp_layer.flags.A:
@@ -318,7 +350,6 @@ def start_packet_capture(interface=None):
                 elif tcp_layer.flags.R:
                     conn['state'] = 'CLOSED'
                 
-                conn['bytes_sent'] += len(tcp_layer.payload)
                 conn['timestamp'] = datetime.now().isoformat()
                 
                 data_store.update_connection(conn_id, conn)
