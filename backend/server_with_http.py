@@ -236,7 +236,7 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
         conn = self.active_connections[conn_id]
         
         # Track bytes in both directions
-        if ip_layer.src == conn['src_ip']:
+        if ip_layer.src == conn['src_ip'] and tcp_layer.sport == conn['src_port']:
             # Packet going in forward direction
             conn['bytes_sent'] += len(tcp_layer.payload)
         else:
@@ -331,7 +331,7 @@ def start_packet_capture(interface=None):
                 conn = _active_connections[conn_id]
                 
                 # Track bytes in both directions
-                if ip_layer.src == conn['src_ip']:
+                if ip_layer.src == conn['src_ip'] and tcp_layer.sport == conn['src_port']:
                     # Packet going in forward direction
                     conn['bytes_sent'] += len(tcp_layer.payload)
                 else:
