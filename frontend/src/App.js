@@ -167,39 +167,91 @@ function App() {
           <h2 className="section-title">Connection Details</h2>
           {selectedConnection && connections[selectedConnection] ? (
             <div>
-              <div className="detail-grid">
-                <div className="detail-item">
-                  <div className="detail-label">State</div>
-                  <div className="detail-value">{connections[selectedConnection].state}</div>
+              <div className="detail-section">
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#888' }}>Endpoints</h3>
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <div className="detail-label">Source</div>
+                    <div className="detail-value">
+                      {connections[selectedConnection].src_ip}:{connections[selectedConnection].src_port}
+                    </div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Destination</div>
+                    <div className="detail-value">
+                      {connections[selectedConnection].dst_ip}:{connections[selectedConnection].dst_port}
+                    </div>
+                  </div>
                 </div>
-                <div className="detail-item">
-                  <div className="detail-label">Congestion Window (cwnd)</div>
-                  <div className="detail-value">{connections[selectedConnection].snd_cwnd}</div>
+              </div>
+
+              <div className="detail-section">
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#888' }}>State</h3>
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <div className="detail-label">TCP State</div>
+                    <div className="detail-value state-badge">{connections[selectedConnection].state}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Connection ID</div>
+                    <div className="detail-value" style={{ fontSize: '0.85rem', fontFamily: 'monospace' }}>
+                      {connections[selectedConnection].connection_id}
+                    </div>
+                  </div>
                 </div>
-                <div className="detail-item">
-                  <div className="detail-label">Slow Start Threshold</div>
-                  <div className="detail-value">{connections[selectedConnection].snd_ssthresh}</div>
+              </div>
+
+              <div className="detail-section">
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#888' }}>Traffic Statistics</h3>
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <div className="detail-label">Bytes Sent</div>
+                    <div className="detail-value">
+                      {(connections[selectedConnection].bytes_sent || 0).toLocaleString()} bytes
+                    </div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Bytes Received</div>
+                    <div className="detail-value">
+                      {(connections[selectedConnection].bytes_received || 0).toLocaleString()} bytes
+                    </div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Total Traffic</div>
+                    <div className="detail-value">
+                      {((connections[selectedConnection].bytes_sent || 0) + 
+                        (connections[selectedConnection].bytes_received || 0)).toLocaleString()} bytes
+                    </div>
+                  </div>
                 </div>
-                <div className="detail-item">
-                  <div className="detail-label">Send Window</div>
-                  <div className="detail-value">{connections[selectedConnection].snd_wnd}</div>
-                </div>
-                <div className="detail-item">
-                  <div className="detail-label">Receive Window</div>
-                  <div className="detail-value">{connections[selectedConnection].rcv_wnd}</div>
-                </div>
-                <div className="detail-item">
-                  <div className="detail-label">Smoothed RTT (µs)</div>
-                  <div className="detail-value">{connections[selectedConnection].srtt}</div>
-                </div>
-                <div className="detail-item">
-                  <div className="detail-label">RTO (ms)</div>
-                  <div className="detail-value">{connections[selectedConnection].rto}</div>
-                </div>
-                <div className="detail-item">
-                  <div className="detail-label">Connection ID</div>
-                  <div className="detail-value" style={{ fontSize: '0.9rem' }}>
-                    {connections[selectedConnection].connection_id}
+              </div>
+
+              <div className="detail-section">
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: '#888' }}>TCP Control Block (tcpcb)</h3>
+                <div className="detail-grid">
+                  <div className="detail-item">
+                    <div className="detail-label">Congestion Window (cwnd)</div>
+                    <div className="detail-value">{connections[selectedConnection].snd_cwnd || 'N/A'}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Slow Start Threshold</div>
+                    <div className="detail-value">{connections[selectedConnection].snd_ssthresh || 'N/A'}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Send Window</div>
+                    <div className="detail-value">{connections[selectedConnection].snd_wnd || 'N/A'}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Receive Window</div>
+                    <div className="detail-value">{connections[selectedConnection].rcv_wnd || 'N/A'}</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Smoothed RTT</div>
+                    <div className="detail-value">{connections[selectedConnection].srtt || 'N/A'} µs</div>
+                  </div>
+                  <div className="detail-item">
+                    <div className="detail-label">Retransmission Timeout</div>
+                    <div className="detail-value">{connections[selectedConnection].rto || 'N/A'} ms</div>
                   </div>
                 </div>
               </div>

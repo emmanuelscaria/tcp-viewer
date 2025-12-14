@@ -191,8 +191,12 @@ class TcpMonitorService(tcp_monitor_pb2_grpc.TcpMonitorServicer):
                             'state': conn_data['state'],
                             'bytes_sent': conn_data['bytes_sent'],
                             'bytes_received': conn_data['bytes_received'],
-                            'snd_cwnd': 10,
-                            'srtt': 1000,
+                            'snd_cwnd': 10,  # TODO: Read from kernel
+                            'snd_ssthresh': 64,
+                            'snd_wnd': 65535,
+                            'rcv_wnd': 65535,
+                            'srtt': 1000,  # microseconds
+                            'rto': 200,  # milliseconds
                             'timestamp': datetime.now().isoformat(),
                         }
                         data_store.update_connection(conn_id, conn_dict)
@@ -352,7 +356,24 @@ def start_packet_capture(interface=None):
                 
                 conn['timestamp'] = datetime.now().isoformat()
                 
-                data_store.update_connection(conn_id, conn)
+                # Update HTTP bridge with full metrics
+                data_store.update_connection(conn_id, {
+                    'connection_id': conn_id,
+                    'src_ip': conn['src_ip'],
+                    'src_port': conn['src_port'],
+                    'dst_ip': conn['dst_ip'],
+                    'dst_port': conn['dst_port'],
+                    'state': conn['state'],
+                    'bytes_sent': conn['bytes_sent'],
+                    'bytes_received': conn['bytes_received'],
+                    'snd_cwnd': 10,  # TODO: Read from kernel
+                    'snd_ssthresh': 64,
+                    'snd_wnd': 65535,
+                    'rcv_wnd': 65535,
+                    'srtt': 1000,  # microseconds
+                    'rto': 200,  # milliseconds
+                    'timestamp': conn['timestamp'],
+                })
                 
             except Exception as e:
                 print(f"Error processing packet: {e}")

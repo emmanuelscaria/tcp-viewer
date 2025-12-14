@@ -164,9 +164,28 @@
 
 .detail-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1rem;
-  margin-top: 1rem;
+  margin-top: 0;
+}
+
+.detail-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #333;
+}
+
+.detail-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.detail-section h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 1px;
 }
 
 .detail-item {
@@ -178,6 +197,29 @@
 
 .detail-label {
   font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #4CAF50;
+  word-break: break-all;
+}
+
+.state-badge {
+  display: inline-block;
+  padding: 0.35rem 1rem;
+  border-radius: 16px;
+  background: #4CAF50;
+  color: #000;
+  font-weight: bold;
+  font-size: 1rem;
+  text-align: center;
+}
   color: #888;
   margin-bottom: 0.25rem;
 }
