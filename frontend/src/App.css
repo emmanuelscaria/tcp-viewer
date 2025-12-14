@@ -1,0 +1,237 @@
+.App {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.header {
+  background-color: #2d2d2d;
+  padding: 1rem 2rem;
+  border-bottom: 2px solid #3d3d3d;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #00ff00;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #ff0000;
+}
+
+.status-indicator.connected {
+  background-color: #00ff00;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.panel {
+  padding: 1rem;
+  overflow: auto;
+}
+
+.left-panel {
+  flex: 1;
+  border-right: 2px solid #3d3d3d;
+  background-color: #252525;
+}
+
+.right-panel {
+  flex: 1;
+  background-color: #2a2a2a;
+}
+
+.section-title {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: #00aaff;
+  border-bottom: 1px solid #3d3d3d;
+  padding-bottom: 0.5rem;
+}
+
+.connections-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.connections-table th {
+  background-color: #333;
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #444;
+  position: sticky;
+  top: 0;
+}
+
+.connections-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #333;
+}
+
+.connections-table tr:hover {
+  background-color: #2d2d2d;
+  cursor: pointer;
+}
+
+.connections-table tr.selected {
+  background-color: #1a4d6d;
+}
+
+.state-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.state-ESTABLISHED {
+  background-color: #00aa00;
+  color: white;
+}
+
+.state-SYN_SENT,
+.state-SYN_RECEIVED {
+  background-color: #ff9900;
+  color: white;
+}
+
+.state-FIN_WAIT,
+.state-CLOSE_WAIT {
+  background-color: #ff6600;
+  color: white;
+}
+
+.state-CLOSED {
+  background-color: #666;
+  color: white;
+}
+
+.state-UNKNOWN {
+  background-color: #333;
+  color: white;
+}
+
+.packet-stream {
+  font-family: monospace;
+  font-size: 0.8rem;
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: #1a1a1a;
+  padding: 0.5rem;
+  border-radius: 4px;
+}
+
+.packet-entry {
+  padding: 0.3rem;
+  border-bottom: 1px solid #2a2a2a;
+  display: flex;
+  gap: 1rem;
+}
+
+.packet-time {
+  color: #888;
+  min-width: 80px;
+}
+
+.packet-info {
+  flex: 1;
+}
+
+.packet-flags {
+  color: #ffaa00;
+  font-weight: bold;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.detail-item {
+  background-color: #1e1e1e;
+  padding: 1rem;
+  border-radius: 4px;
+  border: 1px solid #3d3d3d;
+}
+
+.detail-label {
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 0.25rem;
+}
+
+.detail-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #00ff00;
+}
+
+.no-selection {
+  text-align: center;
+  color: #666;
+  padding: 2rem;
+  font-size: 1.1rem;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.controls label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.controls input,
+.controls select {
+  padding: 0.5rem;
+  background-color: #333;
+  color: white;
+  border: 1px solid #555;
+  border-radius: 4px;
+}
+
+.controls button {
+  padding: 0.5rem 1rem;
+  background-color: #00aa00;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.controls button:hover {
+  background-color: #00cc00;
+}
+
+.controls button:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+}

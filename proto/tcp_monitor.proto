@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package tcp_monitor;
+
+service TcpMonitor {
+  rpc StreamTraffic (MonitorRequest) returns (stream TcpEvent);
+}
+
+message MonitorRequest {
+  string interface_name = 1;
+}
+
+message TcpEvent {
+  oneof event_type {
+    PacketInfo packet = 1;
+    ConnectionStats stats = 2;
+  }
+}
+
+message PacketInfo {
+  string timestamp = 1;
+  string src_ip = 2;
+  int32 src_port = 3;
+  string dst_ip = 4;
+  int32 dst_port = 5;
+  bool flag_syn = 6;
+  bool flag_ack = 7;
+  bool flag_fin = 8;
+  bool flag_rst = 9;
+  bool flag_psh = 10;
+  bool flag_urg = 11;
+  int32 payload_length = 12;
+  int32 seq_number = 13;
+  int32 ack_number = 14;
+}
+
+message ConnectionStats {
+  string connection_id = 1;  // Hash of 4-tuple
+  string src_ip = 2;
+  int32 src_port = 3;
+  string dst_ip = 4;
+  int32 dst_port = 5;
+  string state = 6;          // e.g. "ESTABLISHED"
+  int32 snd_cwnd = 7;        // Congestion Window
+  int32 snd_ssthresh = 8;    // Slow Start Threshold
+  int32 snd_wnd = 9;         // Send Window
+  int32 rcv_wnd = 10;        // Receive Window
+  int32 srtt = 11;           // Smoothed Round Trip Time (microseconds)
+  int32 rto = 12;            // Retransmission Timeout (milliseconds)
+  int64 bytes_sent = 13;
+  int64 bytes_received = 14;
+  string timestamp = 15;
+}
