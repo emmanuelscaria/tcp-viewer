@@ -26,6 +26,7 @@ MANIFEST
 venv/
 ENV/
 env/
+backend/venv/
 
 # Generated gRPC files
 backend/*_pb2.py

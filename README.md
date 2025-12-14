@@ -32,9 +32,19 @@ tcp-viewer/
 
 ```bash
 cd backend
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Generate gRPC stubs
 ./generate_grpc.sh
-sudo python3 server.py
+
+# Run server (requires root)
+sudo venv/bin/python3 server.py
 ```
 
 The server runs on port 50051 (requires root for packet capture).

@@ -4,20 +4,30 @@ Python gRPC server for TCP packet capture and kernel introspection.
 
 ## Setup
 
-1. Install dependencies:
+1. Create and activate virtual environment:
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Generate gRPC stubs:
+3. Generate gRPC stubs:
 ```bash
 chmod +x generate_grpc.sh
 ./generate_grpc.sh
 ```
 
-3. Run the server (requires root):
+4. Run the server (requires root):
 ```bash
-sudo python3 server.py
+# Option 1: Keep venv activated and use sudo -E
+sudo -E venv/bin/python3 server.py
+
+# Option 2: Direct path to venv python
+sudo venv/bin/python3 server.py
 ```
 
 ## Architecture
