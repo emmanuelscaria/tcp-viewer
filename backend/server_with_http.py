@@ -401,8 +401,8 @@ def serve(grpc_port=50051, http_port=50052):
     print(f"   Access: http://localhost:{http_port}/api/traffic")
     print()
     
-    # Start background packet capture
-    start_packet_capture(interface='lo')
+    # Start background packet capture on eth0
+    start_packet_capture(interface='eth0')
     
     print()
     print("Note: Packet capture requires root/sudo privileges")
