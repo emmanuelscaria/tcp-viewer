@@ -1,158 +1,143 @@
-# TCP Viewer - Testing Guide
+# Testing TCP Viewer
 
-## Quick Start
-
-### 1. Restart the Backend
+## Start Backend
 
 ```bash
-cd ~/tcp-viewer/backend
-
-# Stop any existing server
-sudo pkill -f server_with_http.py
-
-# Start the server (requires sudo for packet capture)
-sudo venv/bin/python3 server_with_http.py
+cd backend
+sudo ./run_server.sh
 ```
 
-You should see output like:
+Expected output:
 ```
-✅ TCP Viewer gRPC Server started on port 50051
-✅ HTTP Bridge started on port 50052
-   Access: http://localhost:50052/api/traffic
-📡 Sniffing on interface: eth0
+==================================================
+TCP Viewer - Fixed Backend
+==================================================
+✅ HTTP API on port 50052
+   http://localhost:50052/api/traffic
+   http://localhost:50052/api/stats (debug)
+
+🔍 Capturing on eth0...
+
+Press Ctrl+C to stop
 ```
 
-### 2. Generate Test Traffic
+## Start Frontend
 
-In another terminal:
-
+In a new terminal:
 ```bash
-# Simple test - make some web requests
-curl http://www.google.com
-curl http://www.github.com
-curl http://www.example.com
-
-# Or use the test script
-/tmp/test_tcp.sh
-```
-
-### 3. Verify Backend is Capturing
-
-```bash
-# Check if packets and connections are being captured
-curl http://localhost:50052/api/traffic | python3 -m json.tool | head -50
-```
-
-You should see:
-- `packets`: array with recent TCP packets
-- `connections`: array with active TCP connections
-
-### 4. Start the Frontend
-
-In another terminal:
-
-```bash
-cd ~/tcp-viewer/frontend
+cd frontend  
 npm start
 ```
 
-Then open http://localhost:3000 in your browser.
+Opens browser at http://localhost:3000
 
-Click "Start Monitoring" to begin viewing traffic.
+## Generate Test Traffic
 
-## Debugging
+### Method 1: Using test scripts
 
-### Check if backend is running
+Terminal 1:
 ```bash
-curl http://localhost:50052/api/traffic
+python3 tcp_test_server.py
 ```
 
-### Check backend logs
-The server prints debug messages:
-- `🆕 New connection: ...` when a new TCP connection is detected
-- `📊 Updated connection ...` when connection stats are updated
-- `📡 Sniffing on interface: ...` when packet capture starts
-
-### Common Issues
-
-1. **No packets captured**
-   - Make sure you're running the server with `sudo`
-   - Check that eth0 interface exists: `ip link show eth0`
-   - Try generating traffic: `curl http://www.google.com`
-
-2. **No connections showing in frontend**
-   - Check browser console for errors
-   - Verify API is returning connections: `curl http://localhost:50052/api/traffic`
-   - Make sure you clicked "Start Monitoring" button
-
-3. **Frontend shows "Disconnected"**
-   - Backend might not be running
-   - Check if port 50052 is accessible: `curl http://localhost:50052/api/traffic`
-
-## Architecture
-
-```
-┌──────────────┐         HTTP Poll          ┌─────────────┐
-│              │ ◄─────(every 1 sec)────────│             │
-│   Backend    │                             │  Frontend   │
-│ (Python +    │                             │  (React)    │
-│  Scapy)      │                             │             │
-│              │                             │             │
-│ Port: 50052  │                             │ Port: 3000  │
-└──────┬───────┘                             └─────────────┘
-       │
-       │ Packet Capture
-       ▼
-  ┌────────────┐
-  │   eth0     │
-  │ Interface  │
-  └────────────┘
+Terminal 2:
+```bash
+python3 tcp_test_client.py
 ```
 
-## TCP Metrics Explained
-
-The application now **calculates TCP metrics from packet data** instead of reading kernel state.
-
-### Metrics Displayed:
-
-- **State**: TCP connection state (SYN_SENT, ESTABLISHED, FIN_WAIT, etc.) - derived from packet flags
-- **RTT (Round Trip Time)**: Calculated by measuring time between DATA packet and corresponding ACK
-- **Smoothed RTT (srtt)**: Exponentially weighted moving average of RTT samples
-- **RTO (Retransmission Timeout)**: Calculated as SRTT + 4×RTT_variation (bounds: 200ms - 60s)
-- **Congestion Window (cwnd)**: Estimated from number of inflight (unacknowledged) packets
-- **Slow Start Threshold (ssthresh)**: Estimated threshold, reduced on retransmissions
-- **Send/Receive Window**: Advertised window sizes from TCP headers
-- **Bytes Sent/Received**: Cumulative payload bytes in each direction
-- **Inflight Packets**: Current count of sent but unacknowledged segments
-- **Retransmissions**: Count of detected retransmitted packets
-
-### How Metrics are Calculated:
-
-1. **RTT Measurement**: 
-   - Track sequence numbers and timestamps of outgoing packets
-   - When ACK arrives, calculate time delta from corresponding sent packet
-   - Apply exponential smoothing: SRTT = 0.875×SRTT + 0.125×sample
-
-2. **cwnd Estimation**:
-   - Count unacknowledged packets (inflight)
-   - During slow start: cwnd doubles when all packets acked
-   - During congestion avoidance: cwnd grows linearly
-   - On retransmission: ssthresh = cwnd/2, cwnd = ssthresh
-
-3. **Retransmission Detection**:
-   - Packet with sequence number less than previously sent = retransmission
-
-### Testing Packet-Based Metrics:
+### Method 2: curl to external site
 
 ```bash
-# Run the test client to generate measurable traffic
-python3 ~/tcp_test_client.py
-
-# This creates persistent HTTP connection with example.com
-# You should see RTT measurements appear after first request-response
+curl https://example.com
+curl https://github.com
 ```
 
-**Note**: Packet-based metrics are approximations. For kernel-accurate values, compare with:
+### Method 3: Check the backend itself
+
 ```bash
-ss -ti | grep -A 10 "example.com"
+curl http://localhost:50052/api/stats
 ```
+
+This generates TCP traffic to localhost that will be captured!
+
+## Verify Data
+
+### Check Backend Statistics
+
+```bash
+curl http://localhost:50052/api/stats | jq .
+```
+
+Should show:
+```json
+{
+  "total_packets": 123,
+  "total_connections": 5,
+  "connection_ids": ["abc123", "def456", ...]
+}
+```
+
+### Check Traffic Data
+
+```bash
+curl http://localhost:50052/api/traffic | jq . | head -100
+```
+
+Should show packets and connections.
+
+### Check Frontend
+
+Open http://localhost:3000 and you should see:
+1. **Packet Stream** (top) - scrolling list of recent packets
+2. **Active Connections** (middle) - table of tracked TCP connections  
+3. **Connection Details** (bottom) - detailed stats for selected connection
+
+## Troubleshooting
+
+**No packets showing:**
+- Ensure backend is running as root
+- Check interface name matches (default: eth0)
+- Generate traffic using curl or test scripts
+
+**Active Connections table empty:**
+- This was fixed in the latest version
+- Ensure you're running the new server.py
+- Check backend logs for errors
+
+**Frontend connection error:**
+- Verify backend is on port 50052: `curl http://localhost:50052/api/stats`
+- Check browser console for errors
+- Try refreshing the page
+
+## What to Look For
+
+### In Packet Stream
+- Timestamp
+- Source/Dest IP and Port
+- TCP flags (SYN, ACK, FIN, etc.)
+- Sequence and ACK numbers
+- Payload length
+
+### In Connection Table
+- Connection ID (hash)
+- Endpoints (IP:Port ↔ IP:Port)
+- State (ESTABLISHED, SYN_SENT, etc.)
+- Bytes sent/received
+- Packet count
+
+### In Connection Details  
+- TCP State
+- Congestion window (snd_cwnd)
+- Send/Receive windows
+- Recent sequence numbers
+- RTT estimate
+- Last timestamp
+
+## Success Criteria
+
+✅ Backend captures packets without errors  
+✅ Frontend shows packet stream updating  
+✅ Active connections table populates with flows  
+✅ Clicking a connection shows detailed stats  
+✅ TCP state transitions visible (SYN→ESTABLISHED→FIN_WAIT)  
+✅ Byte counters increment with traffic  

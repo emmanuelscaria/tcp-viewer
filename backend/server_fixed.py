@@ -7,11 +7,10 @@ Fixed version that properly tracks connections
 import socket
 import hashlib
 import json
-import time
 from datetime import datetime
 from threading import Thread, Lock
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from collections import defaultdict, deque
+from collections import defaultdict
 
 try:
     from scapy.all import sniff, TCP, IP
@@ -21,17 +20,14 @@ except ImportError:
 
 
 class TcpMonitor:
-    """Simple TCP connection monitor with RTT calculation"""
+    """Simple TCP connection monitor"""
     
     def __init__(self):
         self.packets = []
         self.connections = {}
         self.lock = Lock()
         self.max_packets = 1000
-        
-        # For RTT tracking: map of (conn_id, seq) -> timestamp
-        self.sent_packets = defaultdict(dict)  # conn_id -> {seq: timestamp}
-        
+    
     def add_packet_and_update_connection(self, pkt_data, conn_data):
         """Atomically add packet and update connection"""
         with self.lock:
@@ -42,11 +38,7 @@ class TcpMonitor:
             
             # Update connection
             conn_id = conn_data['connection_id']
-            if conn_id not in self.connections:
-                self.connections[conn_id] = conn_data
-            else:
-                # Merge with existing connection
-                self.connections[conn_id].update(conn_data)
+            self.connections[conn_id] = conn_data
     
     def get_data(self):
         """Get current state"""
@@ -61,14 +53,13 @@ monitor = TcpMonitor()
 
 
 def packet_handler(pkt):
-    """Handle each captured packet with RTT calculation"""
+    """Handle each captured packet"""
     if not (pkt.haslayer(TCP) and pkt.haslayer(IP)):
         return
     
     try:
         ip = pkt[IP]
         tcp = pkt[TCP]
-        now = time.time()
         
         # Create packet record
         packet_data = {
@@ -94,13 +85,9 @@ def packet_handler(pkt):
         conn_str = f"{endpoints[0][0]}:{endpoints[0][1]}-{endpoints[1][0]}:{endpoints[1][1]}"
         conn_id = hashlib.md5(conn_str.encode()).hexdigest()[:16]
         
-        # Determine packet direction
-        is_outgoing = (ip.src == endpoints[0][0] and tcp.sport == endpoints[0][1])
-        
         # Get or create connection
         if conn_id in monitor.connections:
-            with monitor.lock:
-                conn = monitor.connections[conn_id]
+            conn = monitor.connections[conn_id].copy()
         else:
             conn = {
                 'connection_id': conn_id,
@@ -116,104 +103,26 @@ def packet_handler(pkt):
                 'snd_cwnd': 10,
                 'snd_ssthresh': 64,
                 'snd_wnd': 65535,
-                'rcv_wnd': 65535,
+                'rcv_wnd': 0,
                 'srtt': 0,
-                'rto': 1000,
-                'retransmits': 0,
-                'recent_packets': deque(maxlen=10),
-                'rtt_samples': deque(maxlen=10),
-                'last_seq_sent': 0,
-                'inflight_packets': 0,
+                'rto': 200,
+                'retransmits': 0
             }
         
-        # Add to recent packets
-        pkt_record = {
-            'timestamp': packet_data['timestamp'],
-            'direction': 'outgoing' if is_outgoing else 'incoming',
-            'seq': tcp.seq,
-            'ack': tcp.ack if tcp.flags.A else 0,
-            'flags': ''.join([
-                'S' if tcp.flags.S else '',
-                'A' if tcp.flags.A else '',
-                'F' if tcp.flags.F else '',
-                'R' if tcp.flags.R else '',
-                'P' if tcp.flags.P else '',
-            ])
-        }
-        
-        if 'recent_packets' not in conn:
-            conn['recent_packets'] = deque(maxlen=10)
-        conn['recent_packets'].append(pkt_record)
-        
         # Update connection stats
-        conn['packet_count'] = conn.get('packet_count', 0) + 1
+        conn['packet_count'] += 1
+        conn['rcv_wnd'] = tcp.window
+        conn['last_seq'] = tcp.seq
+        conn['last_ack'] = tcp.ack if tcp.flags.A else 0
+        conn['last_window'] = tcp.window
+        conn['last_timestamp'] = packet_data['timestamp']
         conn['timestamp'] = datetime.now().isoformat()
         
-        # Track sent packets for RTT calculation
-        if is_outgoing and (len(tcp.payload) > 0 or tcp.flags.S or tcp.flags.F):
-            monitor.sent_packets[conn_id][tcp.seq] = now
-            conn['last_seq_sent'] = tcp.seq
-            conn['inflight_packets'] = len(monitor.sent_packets[conn_id])
-        
-        # Calculate RTT from ACKs
-        if not is_outgoing and tcp.flags.A and tcp.ack > 0:
-            # Find matching sent packet
-            acked_seqs = [seq for seq in monitor.sent_packets[conn_id].keys() if seq < tcp.ack]
-            if acked_seqs:
-                # Use the latest sent sequence that was acked
-                latest_seq = max(acked_seqs)
-                sent_time = monitor.sent_packets[conn_id].get(latest_seq)
-                
-                if sent_time:
-                    rtt_sample = (now - sent_time) * 1000  # Convert to ms
-                    
-                    # Only accept reasonable RTT values (0.01ms to 5000ms)
-                    if 0.01 <= rtt_sample <= 5000:
-                        if 'rtt_samples' not in conn:
-                            conn['rtt_samples'] = deque(maxlen=10)
-                        conn['rtt_samples'].append(rtt_sample)
-                        
-                        # Calculate smoothed RTT (SRTT)
-                        if conn.get('srtt', 0) == 0:
-                            conn['srtt'] = int(rtt_sample * 1000)  # Convert to microseconds
-                            conn['rtt_var'] = int(rtt_sample * 500)
-                        else:
-                            alpha = 0.125
-                            beta = 0.25
-                            srtt_ms = conn['srtt'] / 1000.0
-                            rtt_var_ms = conn.get('rtt_var', 0) / 1000.0
-                            
-                            rtt_var_ms = (1 - beta) * rtt_var_ms + beta * abs(srtt_ms - rtt_sample)
-                            srtt_ms = (1 - alpha) * srtt_ms + alpha * rtt_sample
-                            
-                            conn['srtt'] = int(srtt_ms * 1000)  # Store as microseconds
-                            conn['rtt_var'] = int(rtt_var_ms * 1000)
-                        
-                        # Calculate RTO
-                        srtt_ms = conn['srtt'] / 1000.0
-                        rtt_var_ms = conn.get('rtt_var', 0) / 1000.0
-                        conn['rto'] = int(max(200, min(60000, srtt_ms + 4 * rtt_var_ms)))
-                    
-                    # Remove acked packets
-                    for seq in acked_seqs:
-                        monitor.sent_packets[conn_id].pop(seq, None)
-                    
-                    conn['inflight_packets'] = len(monitor.sent_packets[conn_id])
-        
-        # Update window values
-        if is_outgoing:
-            conn['rcv_wnd'] = tcp.window  # Window we're advertising
-            conn['bytes_sent'] = conn.get('bytes_sent', 0) + len(tcp.payload)
-            
-            # Estimate congestion window based on inflight data
-            inflight = conn.get('inflight_packets', 0)
-            if inflight > 0:
-                # Rough cwnd estimation: min of inflight*2 and window
-                estimated_cwnd = min(inflight * 2, tcp.window // 1460)
-                conn['snd_cwnd'] = max(10, estimated_cwnd)
+        # Determine direction and update bytes
+        if ip.src == conn['src_ip'] and tcp.sport == conn['src_port']:
+            conn['bytes_sent'] += len(tcp.payload)
         else:
-            conn['snd_wnd'] = tcp.window  # Remote advertised window
-            conn['bytes_received'] = conn.get('bytes_received', 0) + len(tcp.payload)
+            conn['bytes_received'] += len(tcp.payload)
         
         # Update state based on flags
         if tcp.flags.S and not tcp.flags.A:
@@ -224,22 +133,12 @@ def packet_handler(pkt):
             conn['state'] = 'ESTABLISHED'
         
         if tcp.flags.F:
-            if conn['state'] == 'ESTABLISHED':
-                conn['state'] = 'FIN_WAIT'
-            else:
-                conn['state'] = 'CLOSE_WAIT'
+            conn['state'] = 'FIN_WAIT'
         if tcp.flags.R:
             conn['state'] = 'CLOSED'
         
-        # Convert recent_packets deque to list for JSON serialization
-        conn_to_store = conn.copy()
-        if 'recent_packets' in conn_to_store and isinstance(conn_to_store['recent_packets'], deque):
-            conn_to_store['recent_packets'] = list(conn_to_store['recent_packets'])
-        if 'rtt_samples' in conn_to_store and isinstance(conn_to_store['rtt_samples'], deque):
-            conn_to_store['rtt_samples'] = list(conn_to_store['rtt_samples'])
-        
         # Store both packet and connection atomically
-        monitor.add_packet_and_update_connection(packet_data, conn_to_store)
+        monitor.add_packet_and_update_connection(packet_data, conn)
         
     except Exception as e:
         print(f"❌ Error in packet_handler: {e}")
@@ -305,7 +204,7 @@ class APIHandler(BaseHTTPRequestHandler):
 
 def main():
     print("=" * 50)
-    print("TCP Viewer - Backend Server")
+    print("TCP Viewer - Fixed Backend")
     print("=" * 50)
     
     # Start HTTP API
@@ -332,5 +231,5 @@ if __name__ == '__main__':
     import os
     if os.geteuid() != 0:
         print("⚠️  Warning: Not running as root")
-        print("   Run: sudo venv/bin/python3 server.py\n")
+        print("   Run: sudo venv/bin/python3 server_fixed.py\n")
     main()
