@@ -28,28 +28,42 @@ function App() {
     setIsMonitoring(true);
     setIsConnected(false);
     
-    // Note: This is a placeholder for gRPC-Web connection
-    // In production, you would use generated gRPC-Web client
-    // For now, we'll simulate with WebSocket as a demonstration
+    // Connect to HTTP bridge endpoint
+    console.log(`Starting monitoring on interface: ${interface_}`);
     
-    try {
-      // Simulated connection - replace with actual gRPC-Web client
-      console.log(`Starting monitoring on interface: ${interface_}`);
-      setIsConnected(true);
+    // Poll the backend HTTP endpoint
+    const pollInterval = setInterval(() => {
+      if (!isMonitoring) {
+        clearInterval(pollInterval);
+        return;
+      }
       
-      // TODO: Initialize gRPC-Web client here
-      // const client = new TcpMonitorClient('http://localhost:8080');
-      // const stream = client.streamTraffic({ interface_name: interface_ });
-      // stream.on('data', handleTcpEvent);
-      
-      // Simulated data for demonstration
-      simulateData();
-      
-    } catch (error) {
-      console.error('Connection failed:', error);
-      setIsConnected(false);
-      setIsMonitoring(false);
-    }
+      fetch('http://localhost:50052/api/traffic')
+        .then(res => res.json())
+        .then(data => {
+          setIsConnected(true);
+          
+          // Update packets
+          if (data.packets && data.packets.length > 0) {
+            setPackets(data.packets);
+          }
+          
+          // Update connections
+          if (data.connections && data.connections.length > 0) {
+            const connectionsMap = {};
+            data.connections.forEach(conn => {
+              connectionsMap[conn.connection_id] = conn;
+            });
+            setConnections(connectionsMap);
+          }
+        })
+        .catch(error => {
+          console.error('Backend connection failed:', error);
+          setIsConnected(false);
+        });
+    }, 1000); // Poll every second
+    
+    wsRef.current = { close: () => clearInterval(pollInterval) };
   };
 
   const stopMonitoring = () => {
@@ -58,76 +72,6 @@ function App() {
     if (wsRef.current) {
       wsRef.current.close();
     }
-  };
-
-  // Simulated data generator (replace with real gRPC data)
-  const simulateData = () => {
-    let counter = 0;
-    const interval = setInterval(() => {
-      if (!isMonitoring) {
-        clearInterval(interval);
-        return;
-      }
-      
-      // Simulate packet
-      const packet = {
-        timestamp: new Date().toISOString(),
-        src_ip: '127.0.0.1',
-        src_port: 8000 + Math.floor(Math.random() * 100),
-        dst_ip: '127.0.0.1',
-        dst_port: 50051,
-        flag_syn: counter % 10 === 0,
-        flag_ack: true,
-        flag_fin: counter % 15 === 0,
-        flag_rst: false,
-        flag_psh: counter % 3 === 0,
-        flag_urg: false,
-        payload_length: Math.floor(Math.random() * 1500),
-        seq_number: 1000 + counter,
-        ack_number: 2000 + counter,
-      };
-      
-      handlePacket(packet);
-      
-      // Simulate connection stats every second
-      if (counter % 10 === 0) {
-        const connId = `conn_${Math.floor(counter / 10) % 3}`;
-        const stats = {
-          connection_id: connId,
-          src_ip: '127.0.0.1',
-          src_port: 8000,
-          dst_ip: '127.0.0.1',
-          dst_port: 50051,
-          state: ['ESTABLISHED', 'SYN_SENT', 'FIN_WAIT'][Math.floor(Math.random() * 3)],
-          snd_cwnd: Math.floor(Math.random() * 100),
-          snd_ssthresh: 64,
-          snd_wnd: 65535,
-          rcv_wnd: 65535,
-          srtt: Math.floor(Math.random() * 5000),
-          rto: 200,
-          bytes_sent: counter * 100,
-          bytes_received: counter * 80,
-          timestamp: new Date().toISOString(),
-        };
-        handleConnectionStats(stats);
-      }
-      
-      counter++;
-    }, 100);
-  };
-
-  const handlePacket = (packet) => {
-    setPackets(prev => {
-      const newPackets = [packet, ...prev];
-      return newPackets.slice(0, maxPackets);
-    });
-  };
-
-  const handleConnectionStats = (stats) => {
-    setConnections(prev => ({
-      ...prev,
-      [stats.connection_id]: stats
-    }));
   };
 
   const formatFlags = (packet) => {
