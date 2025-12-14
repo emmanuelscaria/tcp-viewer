@@ -1,6 +1,6 @@
 # TCP Viewer - Backend
 
-Python gRPC server for TCP packet capture and kernel introspection.
+Python HTTP REST API server for TCP packet capture and kernel introspection.
 
 ## Setup
 
@@ -15,36 +15,40 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Generate gRPC stubs:
+3. Run the server (requires root):
 ```bash
-chmod +x generate_grpc.sh
-./generate_grpc.sh
-```
-
-4. Run the server (requires root):
-```bash
-# Option 1: Keep venv activated and use sudo -E
-sudo -E venv/bin/python3 server.py
-
-# Option 2: Direct path to venv python
+# Direct path to venv python
 sudo venv/bin/python3 server.py
 ```
 
 ## Architecture
 
-- **server.py**: Main gRPC server implementation
-- **tcp_monitor_pb2.py**: Auto-generated Protocol Buffer messages (generated)
-- **tcp_monitor_pb2_grpc.py**: Auto-generated gRPC service stubs (generated)
+- **server.py**: Main HTTP REST API server
+- **tcp_introspector.py**: Kernel TCP statistics via `ss` command
+- **tcp_packet_analyzer.py**: Packet-level TCP analysis (RTT calculation, etc.)
 
-## Phase 1 Features
+## Features
 
 - ✅ Raw packet capture using Scapy
-- ✅ gRPC server-side streaming
-- ✅ Basic connection tracking
-- ⚠️ Mock tcpcb values (Phase 2 will integrate real kernel data via eBPF/netlink)
+- ✅ HTTP REST API on port 50052
+- ✅ Real-time connection tracking (bidirectional)
+- ✅ Kernel TCP statistics via pyroute2/ss
+- ✅ Packet-level RTT calculation
+- ✅ Per-connection packet history
 
-## Next Steps (Phase 2)
+## API Endpoints
 
-- Integrate pyroute2 for real socket statistics
-- Add eBPF probes for deep tcpcb introspection
-- Implement proper connection cleanup and timeouts
+**GET /api/traffic**
+Returns JSON with current packets and active connections:
+```json
+{
+  "packets": [...],
+  "connections": [...]
+}
+```
+
+## Notes
+
+- Packet capture runs on **eth0** interface by default
+- Requires root/sudo for packet capture
+- Uses bidirectional connection IDs (A→B and B→A are the same connection)
