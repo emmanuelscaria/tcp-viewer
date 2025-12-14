@@ -210,6 +210,15 @@
   word-break: break-all;
 }
 
+.detail-help {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 0.4rem;
+  font-style: italic;
+  line-height: 1.3;
+}
+}
+
 .state-badge {
   display: inline-block;
   padding: 0.35rem 1rem;
